@@ -123,6 +123,7 @@ async function run() {
         const updateDoc = {
           $set: {
             lastLogin: user.lastLogin,
+            status: user.status,
           },
         };
         result = await usersCollection.updateOne(filter, updateDoc, options);
@@ -136,26 +137,61 @@ async function run() {
 
     app.get("/users", async (req, res) => {
       const searchTerm = req.query.searchText;
+      const page = req.query.page;
+      const size = req.query.size;
       // console.log(searchTerm)
       try {
         if (searchTerm) {
-          const users = await usersCollection.find().toArray();
-          const filteredUsers = users?.filter(user => {
+          let users = await usersCollection.find().toArray();
+          users = users?.filter((user) => {
             console.log(user?.userName);
-            console.log(searchTerm)
-     
-              // console.log(user.phone?.toLowerCase().includes(searchTerm.toLowerCase()) > -1)
-              return user.userName?.toLowerCase().search(searchTerm.toLowerCase()) > -1 || user.email?.toLowerCase().search(searchTerm.toLowerCase()) > -1 || user.phone?.toLowerCase().search(searchTerm.toLowerCase()) > -1
-          })
-          console.log(filteredUsers)
-          res.send(filteredUsers);
+            console.log(searchTerm);
+
+            // console.log(user.phone?.toLowerCase().includes(searchTerm.toLowerCase()) > -1)
+            return (
+              user.userName?.toLowerCase().search(searchTerm.toLowerCase()) >
+                -1 ||
+              user.email?.toLowerCase().search(searchTerm.toLowerCase()) > -1 ||
+              user.phone?.toLowerCase().search(searchTerm.toLowerCase()) > -1
+            );
+          });
+          const count = users.count;
+          res.send({ users, count });
           return;
         }
-        const users = await usersCollection.find().toArray();
-        res.json(users);
+        const users = await usersCollection
+          .find()
+          .skip(page * size)
+          .limit(parseInt(size))
+          .toArray();
+        const count = await usersCollection.estimatedDocumentCount();
+        res.json({ users, count });
       } catch (error) {
         console.error(error);
         res.status(500).send("Internal Server Error");
+      }
+    });
+
+    app.put("/update-status/:uid", async (req, res) => {
+      const uid = req.params.uid;
+      const status = req.body.status;
+      console.log(status);
+      try {
+        // Find the user by username and update the status
+        const filter = {
+          uid,
+        };
+        const options = { upsert: true };
+        const updateDoc = {
+          $set: {
+            status,
+          },
+        };
+        result = await usersCollection.updateOne(filter, updateDoc, options);
+        res.send(result);
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Internal server error" });
       }
     });
 
