@@ -195,6 +195,27 @@ async function run() {
       }
     });
 
+    io.on('connection', (socket) => {
+      // console.log("New user connected");
+      // Join a room based on user UID
+      socket.on('joinRoom', (uid) => {
+        socket.join(uid);
+      });
+    
+      // Handle private messages
+      socket.on('privateMessage', async ({ sender, receiver, content }) => {
+        console.log(receiver, content)
+        // Save the message to MongoDB
+        // const message = new Message({ sender, receiver, content, timestamp: new Date() });
+        // await message.save();
+    
+        // Emit the message to the receiver's room
+        io.to(receiver).emit('privateMessage', { sender, content });
+        // io.to(sender).emit('privateMessage', { sender, content });
+      });
+    });
+    
+
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
