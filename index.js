@@ -3,6 +3,7 @@ const express = require("express");
 const http = require("http");
 const socketIo = require("socket.io");
 const cors = require("cors");
+const { Conversation } = require("twilio/lib/twiml/VoiceResponse");
 require("dotenv").config();
 
 const app = express();
@@ -37,6 +38,7 @@ async function run() {
     .db("SubidhaHomeService")
     .collection("services");
   const usersCollection = client.db("SubidhaHomeService").collection("users");
+  const messageCollection = client.db("SubidhaHomeService").collection("chats");
 
   try {
     app.get("/allServiceCategories", async (req, res) => {
@@ -195,26 +197,78 @@ async function run() {
       }
     });
 
-    io.on('connection', (socket) => {
+    io.on("connection", (socket) => {
       // console.log("New user connected");
       // Join a room based on user UID
-      socket.on('joinRoom', (uid) => {
-        socket.join(uid);
+      socket.on("joinRoom", (sessionId) => {
+        socket.join(sessionId);
       });
-    
+
+      const roomParticipants = {};
+
+      socket.on("joinRoom", async({ uid1, uid2 }) => {
+        // Ensure that the room ID is unique for the conversation
+
+        let roomId;
+
+        const result =  await messageCollection.findOne({
+          $or: [
+            { roomId:  [uid1, uid2].sort().join("-")},
+            { roomId:  [uid2, uid1].sort().join("-")},
+          ]
+        })
+        console.log(result);
+
+        if(result) {
+          roomId = result.roomId;
+        } else {
+          roomId = [uid1, uid2].sort().join("-");
+        }
+        // Check if the room already has two participants
+        const participants = roomParticipants[roomId] || [];
+        if (participants.length < 2) {
+          socket.join(roomId);
+
+          // Add the participant to the list
+          roomParticipants[roomId] = participants.concat(socket.id);
+
+          // Notify the client about successful room join
+          socket.emit("roomJoined", { success: true, roomId });
+        } else {
+          // Notify the client that the room is full
+          socket.emit("roomJoined", {
+            success: false,
+            message: "Room is full",
+          });
+        }
+      });
+
       // Handle private messages
-      socket.on('privateMessage', async ({ sender, receiver, content }) => {
-        console.log(receiver, content)
-        // Save the message to MongoDB
-        // const message = new Message({ sender, receiver, content, timestamp: new Date() });
-        // await message.save();
-    
-        // Emit the message to the receiver's room
-        io.to(receiver).emit('privateMessage', { sender, content });
-        // io.to(sender).emit('privateMessage', { sender, content });
+      socket.on("privateMessage", async ({ roomId, senderId, receiverId, message }) => {
+        console.log(message);
+        console.log(roomId)
+        try {
+          const conversation = await messageCollection.findOneAndUpdate(
+            {
+              roomId: roomId,
+            },
+            {
+              $push: {
+                messages: { senderId, message },
+              },
+            },
+            { upsert: true, new: true }
+          );
+          console.log('Message saved:', conversation);
+          io.to(roomId).emit(`privateMessage-${receiverId}`, { senderId, message });
+          io.to(roomId).emit(`myMessage-${senderId}`, { senderId, message });
+          return conversation;
+        } catch (error) {
+          console.error("Error saving message:", error);
+          throw error;
+        }
       });
     });
-    
 
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
