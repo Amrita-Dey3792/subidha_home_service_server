@@ -7,6 +7,7 @@ const { Conversation } = require("twilio/lib/twiml/VoiceResponse");
 require("dotenv").config();
 
 const app = express();
+
 const server = http.createServer(app);
 
 const io = socketIo(server, {
@@ -112,37 +113,11 @@ async function run() {
       }
     });
 
-    app.post("/users", async (req, res) => {
-      const user = req.body;
-      const query = {
-        uid: user.uid,
-      };
-      let result = await usersCollection.findOne(query);
-
-      if (result?.uid === user.uid) {
-        const filter = { uid: user.uid };
-        const options = { upsert: true };
-        const updateDoc = {
-          $set: {
-            lastLogin: user.lastLogin,
-            status: user.status,
-          },
-        };
-        result = await usersCollection.updateOne(filter, updateDoc, options);
-        console.log(result);
-        res.send({ acknowledged: true });
-        return;
-      }
-      result = await usersCollection.insertOne(user);
-      res.send(result);
-    });
-
     app.get("/users", async (req, res) => {
-      const searchTerm = req.query.searchText;
-      const page = req.query.page;
-      const size = req.query.size;
-      // console.log(searchTerm)
       try {
+        const searchTerm = req.query.searchText;
+        const page = req.query.page;
+        const size = req.query.size;
         if (searchTerm) {
           let users = await usersCollection.find().toArray();
           users = users?.filter((user) => {
@@ -174,11 +149,32 @@ async function run() {
       }
     });
 
-    app.put("/update-status/:uid", async (req, res) => {
-      const uid = req.params.uid;
-      const status = req.body.status;
-      console.log(status);
+    app.post("/users", async (req, res) => {
       try {
+        const user = req.body;
+        const query = {
+          uid: user.uid,
+        };
+        const result = await usersCollection.findOneAndUpdate(
+          query,
+          {
+            $set: user,
+          },
+          { upsert: true, new: true }
+        );
+        if (result === null || result) {
+          res.send({ acknowledged: true });
+        }
+      } catch (error) {
+        console.error("Error creating user:", error);
+        res.status(500).json({ error: "Internal server error" });
+      }
+    });
+
+    app.put("/update-status/:uid", async (req, res) => {
+      try {
+        const uid = req.params.uid;
+        const status = req.body.status;
         // Find the user by username and update the status
         const filter = {
           uid,
@@ -197,29 +193,37 @@ async function run() {
       }
     });
 
+    app.get("/chats/:roomId", async (req, res) => {
+      const roomId = req.params.roomId;
+      const query = {
+        roomId,
+      };
+      const result = await messageCollection.findOne(query);
+      if (result) {
+        res.send(result);
+      }
+      // console.log(result);
+    });
+
     io.on("connection", (socket) => {
-      // console.log("New user connected");
-      // Join a room based on user UID
       socket.on("joinRoom", (sessionId) => {
         socket.join(sessionId);
       });
 
       const roomParticipants = {};
-
-      socket.on("joinRoom", async({ uid1, uid2 }) => {
+      socket.on("joinRoom", async ({ uid1, uid2 }) => {
         // Ensure that the room ID is unique for the conversation
 
         let roomId;
 
-        const result =  await messageCollection.findOne({
+        const result = await messageCollection.findOne({
           $or: [
-            { roomId:  [uid1, uid2].sort().join("-")},
-            { roomId:  [uid2, uid1].sort().join("-")},
-          ]
-        })
-        console.log(result);
+            { roomId: [uid1, uid2].sort().join("-") },
+            { roomId: [uid2, uid1].sort().join("-") },
+          ],
+        });
 
-        if(result) {
+        if (result) {
           roomId = result.roomId;
         } else {
           roomId = [uid1, uid2].sort().join("-");
@@ -243,31 +247,50 @@ async function run() {
         }
       });
 
-      // Handle private messages
-      socket.on("privateMessage", async ({ roomId, senderId, receiverId, message }) => {
-        console.log(message);
-        console.log(roomId)
-        try {
-          const conversation = await messageCollection.findOneAndUpdate(
-            {
-              roomId: roomId,
-            },
-            {
-              $push: {
-                messages: { senderId, message },
-              },
-            },
-            { upsert: true, new: true }
-          );
-          console.log('Message saved:', conversation);
-          io.to(roomId).emit(`privateMessage-${receiverId}`, { senderId, message });
-          io.to(roomId).emit(`myMessage-${senderId}`, { senderId, message });
-          return conversation;
-        } catch (error) {
-          console.error("Error saving message:", error);
-          throw error;
-        }
+      socket.on("typing", ({ roomId, senderId, receiverId }) => {
+        io.to(roomId).emit(`typing-${receiverId}`, { senderId });
       });
+
+      socket.on("notTyping", ({ roomId, senderId, receiverId }) => {
+        io.to(roomId).emit(`notTyping-${receiverId}`, { senderId });
+      });
+
+      // Handle private messages
+      socket.on(
+        "privateMessage",
+        async ({ roomId, senderId, receiverId, message }) => {
+          try {
+            const conversation = await messageCollection.findOneAndUpdate(
+              {
+                roomId: roomId,
+              },
+              {
+                $push: {
+                  messages: { senderId, message },
+                },
+                $set: {
+                  senderId,
+                  receiverId,
+                  seenStatus: {
+                    [senderId]: true,
+                    [receiverId]: false,
+                  },
+                },
+              },
+              { upsert: true, new: true }
+            );
+            io.to(roomId).emit(`privateMessage-${receiverId}`, {
+              senderId,
+              message,
+            });
+            io.to(roomId).emit(`myMessage-${senderId}`, { senderId, message });
+            return conversation;
+          } catch (error) {
+            console.error("Error saving message:", error);
+            throw error;
+          }
+        }
+      );
     });
 
     console.log(
