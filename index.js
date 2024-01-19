@@ -40,6 +40,7 @@ async function run() {
     .collection("services");
   const usersCollection = client.db("SubidhaHomeService").collection("users");
   const messageCollection = client.db("SubidhaHomeService").collection("chats");
+  const providersCollection = client.db("SubidhaHomeService").collection("providers");
 
   try {
     app.get("/allServiceCategories", async (req, res) => {
@@ -171,6 +172,48 @@ async function run() {
       }
     });
 
+    app.get("/users/:uid", async(req, res) => {
+      try {
+        const uid = req.params.uid;
+        const query = {
+          uid
+        }
+        const user = await usersCollection.findOne(query);
+        res.send(user);
+        
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Internal server error" });
+      }
+    });
+
+    app.post("/users/:uid", async(req, res) => {
+      try {
+        const data = req.body;
+        const uid = req.params.uid;
+
+        const filter = {
+          uid
+        }
+
+        const options = { upsert: true };
+
+        const updateDoc = {
+          $set: {
+            [Object.keys(data)[0]]: Object.values(data)[0]
+          },
+        };
+        const result = await usersCollection.updateOne(filter, updateDoc, options);
+        res.send(result);
+        
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Internal server error" });
+      }
+    });
+
+    
+
     app.put("/update-status/:uid", async (req, res) => {
       try {
         const uid = req.params.uid;
@@ -193,6 +236,17 @@ async function run() {
       }
     });
 
+    app.post("/providers", async (req, res) => {
+      try {
+        const provider = req.body;
+        const result = await providersCollection.insertOne(provider);
+        res.send(result);
+      } catch (error) {
+        console.error("Error creating user:", error);
+        res.status(500).json({ error: "Internal server error" });
+      }
+    });
+
     app.get("/chats/:roomId", async (req, res) => {
       const roomId = req.params.roomId;
       const query = {
@@ -202,7 +256,6 @@ async function run() {
       if (result) {
         res.send(result);
       }
-      // console.log(result);
     });
 
     io.on("connection", (socket) => {
@@ -255,7 +308,6 @@ async function run() {
         io.to(roomId).emit(`notTyping-${receiverId}`, { senderId });
       });
 
-      // Handle private messages
       socket.on(
         "privateMessage",
         async ({ roomId, senderId, receiverId, message }) => {
