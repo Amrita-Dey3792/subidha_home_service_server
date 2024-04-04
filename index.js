@@ -11,7 +11,7 @@ const server = http.createServer(app);
 
 const io = socketIo(server, {
   cors: {
-    origin: "*",
+    origin: "http://localhost:5173",
     methods: ["GET", "POST"],
   },
 });
@@ -39,7 +39,12 @@ async function run() {
     .collection("services");
   const usersCollection = client.db("SubidhaHomeService").collection("users");
   const messageCollection = client.db("SubidhaHomeService").collection("chats");
-  const providersCollection = client.db("SubidhaHomeService").collection("providers");
+  const providersCollection = client
+    .db("SubidhaHomeService")
+    .collection("providers");
+  const bookingCollection = client
+    .db("SubidhaHomeService")
+    .collection("booking");
 
   try {
     app.get("/allServiceCategories", async (req, res) => {
@@ -103,6 +108,7 @@ async function run() {
         }
 
         res.send({
+          serviceCategory: serviceCategory.serviceName,
           subCategory,
           serviceOverview: serviceCategory.serviceOverview,
           faq: serviceCategory.faq,
@@ -171,49 +177,49 @@ async function run() {
       }
     });
 
-    app.get("/users/:uid", async(req, res) => {
+    app.get("/users/:uid", async (req, res) => {
       try {
         const uid = req.params.uid;
         const query = {
-          uid
-        }
+          uid,
+        };
         const user = await usersCollection.findOne(query);
         res.send(user);
-        
       } catch (error) {
         console.error(error);
         res.status(500).json({ message: "Internal server error" });
       }
     });
 
-    app.post("/users/:uid", async(req, res) => {
+    app.post("/users/:uid", async (req, res) => {
       try {
         const data = req.body;
         const uid = req.params.uid;
 
         const filter = {
-          uid
-        }
+          uid,
+        };
 
         const options = { upsert: true };
 
         const updateDoc = {
           $set: {
-            [Object.keys(data)[0]]: Object.values(data)[0]
+            [Object.keys(data)[0]]: Object.values(data)[0],
           },
         };
-        const result = await usersCollection.updateOne(filter, updateDoc, options);
+        const result = await usersCollection.updateOne(
+          filter,
+          updateDoc,
+          options
+        );
         res.send(result);
-        
       } catch (error) {
         console.error(error);
         res.status(500).json({ message: "Internal server error" });
       }
     });
 
-    
-
-    app.put("/update-status/:uid", async (req, res) => {
+    app.put("/users", async (req, res) => {
       try {
         const uid = req.params.uid;
         const status = req.body.status;
@@ -235,6 +241,20 @@ async function run() {
       }
     });
 
+    app.put('/user/update-image/:uid', async (req, res) => {
+      console.log("Hello");
+      const userId = req.params.uid;
+      const { photoURL } = req.body.photoURL;
+    
+      try {
+        const updateResult = await usersCollection.updateOne({ uid: userId }, { $set: { photoURL } });
+        res.json(updateResult);
+      } catch (err) {
+        console.error('Error updating image:', err);
+        res.status(500).json({ message: 'Internal server error' });
+      }
+    });
+
     app.post("/providers", async (req, res) => {
       try {
         const provider = req.body;
@@ -246,6 +266,63 @@ async function run() {
       }
     });
 
+    app.get("/providers", async (req, res) => {
+      const { division, district, upazila, serviceCategory } = req.query;
+
+      try {
+        const query = {};
+        if (division) query.division = division;
+        if (district) query.district = district;
+        if (upazila) query.upazila = upazila;
+        if (serviceCategory) query.serviceCategory = serviceCategory;
+
+        console.log(division);
+
+        const serviceProviders = await providersCollection
+          .find(query)
+          .toArray();
+        res.json(serviceProviders);
+      } catch (error) {
+        res.status(500).json({ error: "Internal Server Error" });
+      }
+    });
+
+    app.post("/booking", async(req, res) => {
+      const newBooking = req.body;
+      try {
+        const result = await bookingCollection.insertOne(newBooking);
+        res.send(result);
+      } catch (error) {
+        res.status(500).json({ error: "Internal Server Error" });
+      }
+    });
+
+    app.get("/booking/:uid", async(req, res) => {
+      const userUID = req.params.uid;
+      try {
+        const query = {
+          userUID
+        } 
+        const bookingList = await bookingCollection.find(query).toArray();
+        res.send(bookingList);
+      } catch(error) {
+        res.status(500).json({ error: "Internal Server Error" });
+      }
+    })
+
+    app.get("/booking-details/:id", async(req, res) => {
+      const bookingID = req.params.id;
+      try {
+        const query = {
+          _id: new ObjectId(bookingID)
+        }
+        const bookingDetails = await bookingCollection.findOne(query);
+        res.send(bookingDetails);
+      } catch(error) {
+        res.status(500).json({ error: "Internal Server Error" });
+      }
+    })
+
     app.get("/chats/:roomId", async (req, res) => {
       const roomId = req.params.roomId;
       const query = {
@@ -254,6 +331,50 @@ async function run() {
       const result = await messageCollection.findOne(query);
       if (result) {
         res.send(result);
+      } else {
+        res.send({ messages: [] });
+      }
+    });
+
+    app.get("/messages/:uid", async (req, res) => {
+      try {
+        const uid = req.params.uid;
+        const query = {
+          $or: [{ senderId: uid }, { receiverId: uid }],
+        };
+        const conversations = await messageCollection.find(query).toArray();
+
+        const previousMessagesData = await Promise.all(
+          conversations.map(async (conversation) => {
+            const conversationIDs = conversation.roomId.split("-");
+            const receiverId =
+              conversationIDs[0] === uid
+                ? conversationIDs[1]
+                : conversationIDs[0];
+            const user = await usersCollection.findOne({ uid: receiverId });
+            const lastMessage =
+              conversation.messages[conversation.messages.length - 1];
+
+            let formattedLastMessage;
+            if (lastMessage.senderId === uid) {
+              formattedLastMessage = `You: ${lastMessage.message}`;
+            } else {
+              formattedLastMessage = lastMessage.message;
+            }
+
+            return {
+              uid: user.uid,
+              userName: user.userName,
+              photoURL: user.photoURL,
+              lastMessage: formattedLastMessage,
+            };
+          })
+        );
+
+        res.send(previousMessagesData);
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Internal Server Error" });
       }
     });
 
@@ -265,7 +386,6 @@ async function run() {
       const roomParticipants = {};
       socket.on("joinRoom", async ({ uid1, uid2 }) => {
         // Ensure that the room ID is unique for the conversation
-
         let roomId;
 
         const result = await messageCollection.findOne({
