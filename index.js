@@ -1,4 +1,5 @@
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const jwt = require("jsonwebtoken");
 const express = require("express");
 const http = require("http");
 const socketIo = require("socket.io");
@@ -19,6 +20,21 @@ const io = socketIo(server, {
 // middleware
 app.use(express.json());
 app.use(cors());
+
+function verifyJWT(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).send("unauthorized access");
+  }
+  const token = authHeader.split(" ")[1];
+  jwt.verify(token, process.env.ACCESS_TOKEN, function (err, decoded) {
+    if (err) {
+      return res.status(403).send({ message: "forbidden access" });
+    }
+    req.decoded = decoded;
+    next();
+  });
+}
 
 const port = process.env.PORT || 5000;
 
@@ -45,6 +61,9 @@ async function run() {
   const bookingCollection = client
     .db("SubidhaHomeService")
     .collection("booking");
+    const reviewsCollection = client
+    .db("SubidhaHomeService")
+    .collection("reviews");
 
   try {
     app.get("/allServiceCategories", async (req, res) => {
@@ -219,7 +238,7 @@ async function run() {
       }
     });
 
-    app.put("/users", async (req, res) => {
+    app.put("/update-status/:uid", async (req, res) => {
       try {
         const uid = req.params.uid;
         const status = req.body.status;
@@ -233,7 +252,11 @@ async function run() {
             status,
           },
         };
-        result = await usersCollection.updateOne(filter, updateDoc, options);
+        const result = await usersCollection.updateOne(
+          filter,
+          updateDoc,
+          options
+        );
         res.send(result);
       } catch (error) {
         console.error(error);
@@ -241,18 +264,61 @@ async function run() {
       }
     });
 
-    app.put('/user/update-image/:uid', async (req, res) => {
-      console.log("Hello");
+    app.put("/user/update-image/:uid", async (req, res) => {
       const userId = req.params.uid;
       const { photoURL } = req.body.photoURL;
-    
+
       try {
-        const updateResult = await usersCollection.updateOne({ uid: userId }, { $set: { photoURL } });
+        const updateResult = await usersCollection.updateOne(
+          { uid: userId },
+          { $set: { photoURL } }
+        );
         res.json(updateResult);
       } catch (err) {
-        console.error('Error updating image:', err);
-        res.status(500).json({ message: 'Internal server error' });
+        console.error("Error updating image:", err);
+        res.status(500).json({ message: "Internal server error" });
       }
+    });
+
+    app.patch("/users/admin/:uid", verifyJWT, async (req, res) => {
+      const decodedUID = req.decoded.uid;
+      console.log(decodedUID);
+      console.log(req.query.userId);
+      const uid = req.params.uid;
+      if (req.query.userId !== decodedUID) {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      const { role } = req.body;
+      try {
+        const filter = {
+          uid,
+        };
+        // const options = { upsert: true };
+        const updateDoc = {
+          $set: {
+            role,
+          },
+        };
+        const result = await usersCollection.updateOne(filter, updateDoc);
+        res.send(result);
+      } catch (err) {
+        res.status(500).json({ message: "Internal server error" });
+      }
+    });
+
+    app.get("/users/admin/:uid", async (req, res) => {
+      const uid = req.params.uid;
+      const query = {
+        uid: uid,
+      };
+      const user = await usersCollection.findOne(query);
+      console.log(user);
+      res.send({
+        isAdmin:
+          user?.role === "Admin" ||
+          user?.role === "Sub admin" ||
+          user?.role === "Super admin",
+      });
     });
 
     app.post("/providers", async (req, res) => {
@@ -287,7 +353,17 @@ async function run() {
       }
     });
 
-    app.post("/booking", async(req, res) => {
+    app.get("/users/provider/:uid", async (req, res) => {
+      const uid = req.params.uid;
+      const query = {
+        uid: uid,
+      };
+      const user = await providersCollection.findOne(query);
+      console.log({ isProvider: user?.role === "provider" });
+      res.send({ isProvider: user?.role === "provider" });
+    });
+
+    app.post("/booking", async (req, res) => {
       const newBooking = req.body;
       try {
         const result = await bookingCollection.insertOne(newBooking);
@@ -297,31 +373,102 @@ async function run() {
       }
     });
 
-    app.get("/booking/:uid", async(req, res) => {
+    app.get("/booking/:uid", async (req, res) => {
       const userUID = req.params.uid;
+
       try {
         const query = {
-          userUID
-        } 
+          userUID,
+        };
         const bookingList = await bookingCollection.find(query).toArray();
         res.send(bookingList);
-      } catch(error) {
+      } catch (error) {
         res.status(500).json({ error: "Internal Server Error" });
       }
-    })
+    });
 
-    app.get("/booking-details/:id", async(req, res) => {
+    app.get("/provider-bookings/:providerId", async (req, res) => {
+      const serviceManUID = req.params.providerId;
+
+      try {
+        const query = {
+          serviceManUID,
+        };
+        const bookingList = await bookingCollection.find(query).toArray();
+        res.send(bookingList);
+      } catch (error) {
+        res.status(500).json({ error: "Internal Server Error" });
+      }
+    });
+
+    app.get("/booking-details/:id", async (req, res) => {
       const bookingID = req.params.id;
       try {
         const query = {
-          _id: new ObjectId(bookingID)
-        }
+          _id: new ObjectId(bookingID),
+        };
         const bookingDetails = await bookingCollection.findOne(query);
         res.send(bookingDetails);
-      } catch(error) {
+      } catch (error) {
         res.status(500).json({ error: "Internal Server Error" });
       }
+    });
+
+    app.patch("/booking-status/:bookingId", async (req, res) => {
+      const { status } = req.body;
+
+      console.log(status);
+      const bookingId = req.params.bookingId;
+      console.log(bookingId);
+      try {
+        const filter = {
+          _id: new ObjectId(bookingId),
+        };
+        console.log(filter);
+        const updateDoc = {
+          $set: {
+            bookingStatus: status,
+          },
+        };
+        console.log(filter);
+        const result = await bookingCollection.updateOne(filter, updateDoc);
+        console.log(result);
+        res.send(result);
+      } catch (error) {
+        res.status(500).json({ error: "Internal Server Error" });
+      }
+    });
+
+    app.get("/provider-details/:uid", async (req, res) => {
+      const providerID = req.params.uid;
+      try {
+        const query = {
+          uid: providerID,
+        };
+        const provider = await providersCollection.findOne(query);
+        res.send(provider);
+      } catch (error) {
+        res.status(500).json({ error: "Internal Server Error" });
+      }
+    });
+
+    app.post("/review", async(req, res) => {
+       const review = req.body;
+
     })
+
+    app.get("/jwt", async (req, res) => {
+      const uid = req.query.uid;
+      const query = { uid };
+      const user = await usersCollection.findOne(query);
+      if (user) {
+        const token = jwt.sign({ uid }, process.env.ACCESS_TOKEN, {
+          expiresIn: "1h",
+        });
+        return res.send({ accessToken: token });
+      }
+      res.status(403).send({ accessToken: "" });
+    });
 
     app.get("/chats/:roomId", async (req, res) => {
       const roomId = req.params.roomId;
