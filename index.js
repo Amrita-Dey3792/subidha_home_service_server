@@ -61,7 +61,7 @@ async function run() {
   const bookingCollection = client
     .db("SubidhaHomeService")
     .collection("booking");
-    const reviewsCollection = client
+  const reviewsCollection = client
     .db("SubidhaHomeService")
     .collection("reviews");
 
@@ -452,10 +452,27 @@ async function run() {
       }
     });
 
-    app.post("/review", async(req, res) => {
-       const review = req.body;
+    app.post("/review", async (req, res) => {
+      const review = req.body;
+      try {
+        const result = await reviewsCollection.insertOne(review);
+        res.send(result);
+      } catch (error) {
+        res.status(500).json({ error: "Internal Server Error" });
+      }
+    });
 
-    })
+    app.get("/reviews/:providerId", async (req, res) => {
+      const serviceManUID = req.params.providerId;
+      try {
+        const query = { serviceManUID };
+        const reviews = await reviewsCollection.find(query).sort({ _id: -1 }).toArray();
+        res.send(reviews);
+      } catch (error) {
+        res.status(500).json({ error: "Internal Server Error" });
+      }
+    });
+    
 
     app.get("/jwt", async (req, res) => {
       const uid = req.query.uid;
