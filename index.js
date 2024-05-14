@@ -466,13 +466,42 @@ async function run() {
       const serviceManUID = req.params.providerId;
       try {
         const query = { serviceManUID };
-        const reviews = await reviewsCollection.find(query).sort({ _id: -1 }).toArray();
+        const reviews = await reviewsCollection
+          .find(query)
+          .sort({ _id: -1 })
+          .toArray();
         res.send(reviews);
       } catch (error) {
         res.status(500).json({ error: "Internal Server Error" });
       }
     });
-    
+
+    app.get("/find-services", async (req, res) => {
+      const searchText = req.query.searchText;
+      if (searchText) {
+        const allServiceCategories = await allServicesCollection
+          .find({})
+          .toArray();
+        const matchedServices = [];
+        allServiceCategories.map((serviceCategory) => {
+          const services = serviceCategory.subCategories;
+          // console.log(serviceCategory.subCategories)
+          services.map((service) => {
+            console.log(service.serviceName.includes(searchText));
+            if (service.serviceName.includes(searchText)) {
+              matchedServices.push({
+                categoryId: serviceCategory._id,
+                subCategoryId: service.id,
+                serviceName: service.serviceName,
+              });
+            }
+          });
+        });
+        return res.send(matchedServices);
+      }
+      res.send([]);
+      
+    });
 
     app.get("/jwt", async (req, res) => {
       const uid = req.query.uid;
