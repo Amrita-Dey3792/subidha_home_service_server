@@ -487,8 +487,8 @@ async function run() {
           const services = serviceCategory.subCategories;
           // console.log(serviceCategory.subCategories)
           services.map((service) => {
-            console.log(service.serviceName.includes(searchText));
-            if (service.serviceName.includes(searchText)) {
+            // console.log();
+            if (service.serviceName.toLowerCase().includes(searchText.toLowerCase())) {
               matchedServices.push({
                 categoryId: serviceCategory._id,
                 subCategoryId: service.id,
@@ -500,7 +500,32 @@ async function run() {
         return res.send(matchedServices);
       }
       res.send([]);
-      
+    });
+
+    app.get('/user-bookings-reviews/:uid', async(req, res) => {
+       const userUID = req.params.uid;
+
+       const bookings = await bookingCollection.find({
+        userUID
+       }).toArray();
+       const reviews = await reviewsCollection.find({
+        userUID
+       }).toArray();
+       res.send({totalBookings: bookings.length, totalReviews: reviews.length});
+
+    })
+
+    app.get('/user-reviews/:uid', async(req, res) => {
+      const userUID = req.params.uid;
+      try {
+        const query = {
+          userUID
+        }
+        const reviews = await reviewsCollection.find(query).toArray();
+        res.send(reviews);
+      } catch(error) {
+
+      }
     });
 
     app.get("/jwt", async (req, res) => {
