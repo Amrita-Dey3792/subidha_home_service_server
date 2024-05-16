@@ -138,6 +138,23 @@ async function run() {
       }
     });
 
+    app.get("/service-categories", async (req, res) => {
+      let serviceName = req.query.serviceName;
+
+      // Encoding the serviceName parameter
+      serviceName = serviceName.replace(/&/g, "%26");
+
+      if (serviceName) {
+        const category = await allServicesCollection.findOne({
+          serviceName: {
+            $regex: serviceName,
+          },
+        });
+        return res.send(category);
+      }
+      return res.send({});
+    });
+
     app.get("/users", async (req, res) => {
       try {
         const searchTerm = req.query.searchText;
@@ -353,6 +370,16 @@ async function run() {
       }
     });
 
+    app.get("/providers/:uid", async (req, res) => {
+      const uid = req.params.uid;
+      try {
+        const providerDetails = await providersCollection.findOne({ uid });
+        res.send(providerDetails);
+      } catch (error) {
+        res.status(500).json({ error: "Internal Server Error" });
+      }
+    });
+
     app.get("/users/provider/:uid", async (req, res) => {
       const uid = req.params.uid;
       const query = {
@@ -485,10 +512,12 @@ async function run() {
         const matchedServices = [];
         allServiceCategories.map((serviceCategory) => {
           const services = serviceCategory.subCategories;
-          // console.log(serviceCategory.subCategories)
           services.map((service) => {
-            // console.log();
-            if (service.serviceName.toLowerCase().includes(searchText.toLowerCase())) {
+            if (
+              service.serviceName
+                .toLowerCase()
+                .includes(searchText.toLowerCase())
+            ) {
               matchedServices.push({
                 categoryId: serviceCategory._id,
                 subCategoryId: service.id,
@@ -502,31 +531,117 @@ async function run() {
       res.send([]);
     });
 
-    app.get('/user-bookings-reviews/:uid', async(req, res) => {
-       const userUID = req.params.uid;
+    app.get("/user-bookings-reviews/:uid", async (req, res) => {
+      const userUID = req.params.uid;
 
-       const bookings = await bookingCollection.find({
-        userUID
-       }).toArray();
-       const reviews = await reviewsCollection.find({
-        userUID
-       }).toArray();
-       res.send({totalBookings: bookings.length, totalReviews: reviews.length});
+      const bookings = await bookingCollection
+        .find({
+          userUID,
+        })
+        .toArray();
+      const reviews = await reviewsCollection
+        .find({
+          userUID,
+        })
+        .toArray();
+      res.send({
+        totalBookings: bookings.length,
+        totalReviews: reviews.length,
+      });
+    });
 
-    })
-
-    app.get('/user-reviews/:uid', async(req, res) => {
+    app.get("/user-reviews/:uid", async (req, res) => {
       const userUID = req.params.uid;
       try {
         const query = {
-          userUID
-        }
+          userUID,
+        };
         const reviews = await reviewsCollection.find(query).toArray();
         res.send(reviews);
-      } catch(error) {
+      } catch (error) {}
+    });
 
+    app.post("/edit-provider-service/:providerId", async (req, res) => {
+      const providerId = req.params.providerId;
+      const { editService } = req.body;
+
+      try {
+        const provider = await providersCollection.findOne({ uid: providerId });
+
+        if (provider) {
+          if (provider.myServices && provider.myServices.length > 0) {
+            // Update existing service
+            const matchedService = provider.myServices.find((service) => {
+              if (service.serviceName === editService.serviceName) {
+                return service;
+              }
+            });
+            if (matchedService) {
+              matchedService.amount = editService.amount;
+              matchedService.details = editService.details;
+              if (
+                matchedService.selectedFileURL !== editService.selectedFileURL
+              ) {
+                matchedService.selectedFileURL = editService.selectedFileURL;
+              }
+              const restServices = provider.myServices.filter((service) => {
+                if (service.serviceName !== editService.serviceName) {
+                  return service;
+                }
+              });
+
+              const result = await providersCollection.findOneAndUpdate(
+                { uid: providerId },
+                { $set: { myServices: [...restServices, matchedService] } },
+                { returnOriginal: false }
+              );
+
+              return res.send(result);
+            } else {
+              const restServices = provider.myServices.filter((service) => {
+                if (service.serviceName !== editService.serviceName) {
+                  return service;
+                }
+              });
+              const result = await providersCollection.findOneAndUpdate(
+                { uid: providerId },
+                { $set: { myServices: [...restServices, editService] } },
+                { returnOriginal: false }
+              );
+              return res.send(result);
+            }
+          }
+          // res.json(result.value);
+          else {
+            // Create new service array
+            const result = await providersCollection.findOneAndUpdate(
+              { uid: providerId },
+              { $set: { myServices: [editService] } },
+              { returnOriginal: false }
+            );
+            return res.json(result);
+          }
+        } else {
+          res.status(404).json({ error: "Provider not found" });
+        }
+      } catch (error) {
+        console.error("Error updating provider service:", error);
+        res.status(500).json({ error: "Internal server error" });
       }
     });
+
+    app.post("/provider-service/:providerId", async(req, res) => {
+      const providerId = req.params.providerId;
+      const {serviceName} = req.body;
+      console.log(serviceName)
+
+      const provider = await providersCollection.findOne({uid: providerId});
+      if(provider?.myServices) {
+        const matchedService = provider.myServices.find(service => service.serviceName === serviceName);
+        return res.send(matchedService);
+      } 
+      res.json.send({});
+    })
 
     app.get("/jwt", async (req, res) => {
       const uid = req.query.uid;
