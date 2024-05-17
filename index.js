@@ -1,4 +1,5 @@
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const SSLCommerzPayment = require("sslcommerz-lts");
 const jwt = require("jsonwebtoken");
 const express = require("express");
 const http = require("http");
@@ -38,6 +39,10 @@ function verifyJWT(req, res, next) {
 
 const port = process.env.PORT || 5000;
 
+const store_id = process.env.STORE_ID;
+const store_passwd = process.env.STORE_PASSWORD;
+const is_live = false; //true for live, false for sandbox
+
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.5f5xb9l.mongodb.net/?retryWrites=true&w=majority`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -64,6 +69,10 @@ async function run() {
   const reviewsCollection = client
     .db("SubidhaHomeService")
     .collection("reviews");
+
+  const paymentCollection = client
+    .db("SubidhaHomeService")
+    .collection("payments");
 
   try {
     app.get("/allServiceCategories", async (req, res) => {
@@ -628,6 +637,125 @@ async function run() {
         return res.send(matchedService);
       }
       res.send({});
+    });
+
+    const tran_id = new ObjectId().toString();
+
+    app.post("/make-payment", async (req, res) => {
+      const bookingInfo = req.body;
+      const booking = await bookingCollection.findOne({
+        _id: new ObjectId(bookingInfo._id),
+      });
+
+      // const data = {
+      //   total_amount: booking.totalAmount,
+      //   quantity: booking.serviceQuantity,
+      //   currency: "BDT",
+      //   tran_id: tran_id, // use unique tran_id for each api call
+      //   success_url: "http://localhost:3030/success",
+      //   fail_url: "http://localhost:3030/fail",
+      //   cancel_url: "http://localhost:3030/cancel",
+      //   ipn_url: "http://localhost:3030/ipn",
+      //   booking_data: bookingInfo.selectedDate,
+      //   service_name: bookingInfo.service,
+      //   provider_uid: bookingInfo.serviceManUID,
+      //   provider_name: bookingInfo.providerName,
+      //   provider_phone: bookingInfo.providerPhone,
+      //   provider_photo: bookingInfo.providerPhotoURL,
+      //   cus_name: bookingInfo.userName,
+      //   cus_photo: bookingInfo.userPhotoURL,
+      //   cus_uid: bookingInfo.userUID,
+      //   cus_division: bookingInfo.division,
+      //   cus_district: bookingInfo.district,
+      //   cus_upazila: bookingInfo.upazila,
+      //   cus_fullAddress: bookingInfo.fullAddress,
+      //   cus_country: "Bangladesh",
+      //   cus_phone: bookingInfo.userPhone,
+      //   booking_status: bookingInfo.bookingStatus,
+      // };
+
+      // console.log(data);
+
+      const data = {
+        total_amount: booking.totalAmount,
+        currency: "BDT",
+        tran_id: tran_id, // use unique tran_id for each api call
+        success_url: `https://subidha-home-services-server3792.glitch.me/payment/success/${booking._id}`,
+        fail_url: "http://localhost:3030/fail",
+        cancel_url: "http://localhost:3030/cancel",
+        ipn_url: "http://localhost:3030/ipn",
+        shipping_method: "Courier",
+        product_name: "Cleaning Service",
+        product_category: "Clean",
+        product_profile: "general",
+        cus_name: "Customer Name",
+        cus_email: "customer@example.com",
+        cus_add1: "Dhaka",
+        cus_add2: "Dhaka",
+        cus_city: "Dhaka",
+        cus_state: "Dhaka",
+        cus_postcode: "1000",
+        cus_country: "Bangladesh",
+        cus_phone: "01943104565",
+        cus_fax: "01711111111",
+        ship_name: "Customer Name",
+        ship_add1: "Dhaka",
+        ship_add2: "Dhaka",
+        ship_city: "Dhaka",
+        ship_state: "Dhaka",
+        ship_postcode: 1000,
+        ship_country: "Bangladesh",
+      };
+
+      console.log(data);
+
+      const sslcz = new SSLCommerzPayment(store_id, store_passwd, is_live);
+      sslcz.init(data).then((apiResponse) => {
+        // Redirect the user to payment gateway
+        let GatewayPageURL = apiResponse.GatewayPageURL;
+        res.send({ url: GatewayPageURL });
+
+        // console.log("Redirecting to: ", GatewayPageURL);
+      });
+
+      const payment = {
+        bookingId: booking._id,
+        bookingDetails: booking,
+        paidStatus: false,
+        transationId: tran_id,
+      };
+
+      const result = await paymentCollection.insertOne(payment);
+
+      app.post("/payment/success/:bookingId", async (req, res) => {
+        console.log(req.params.bookingId);
+        const paymentUpdateResult = await paymentCollection.updateOne(
+          {
+            bookingId: new ObjectId(req.params.bookingId),
+          },
+          {
+            $set: {
+              paidStatus: true,
+            },
+          }
+        );
+
+        const bookingUpdateResult = await bookingCollection.updateOne(
+          { _id: new ObjectId(req.params.bookingId) },
+          {
+            $set: {
+              paidStatus: true,
+            },
+          }
+        );
+
+        if (
+          paymentUpdateResult.modifiedCount > 0 &&
+          bookingUpdateResult.modifiedCount > 0
+        ) {
+          res.redirect(`http://localhost:5173/payment/success/${req.params.bookingId}`);
+        }
+      });
     });
 
     app.get("/jwt", async (req, res) => {
