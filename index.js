@@ -89,14 +89,12 @@ async function run() {
     app.get("/allServiceCategories/:id", async (req, res) => {
       try {
         const serviceId = req.params.id;
-        console.log(serviceId);
         const query = {
           _id: new ObjectId(serviceId),
         };
         const service = await allServicesCollection.findOne(query);
         res.send(service);
       } catch (error) {
-        console.log(error);
         res.status(500).send("Internal Server Error");
       }
     });
@@ -105,9 +103,6 @@ async function run() {
       try {
         const categoryId = req.params.categoryId;
         const subCategoryId = req.params.subCategoryId;
-
-        console.log(categoryId);
-        console.log(subCategoryId);
 
         const query = {
           _id: new ObjectId(categoryId),
@@ -163,10 +158,6 @@ async function run() {
         if (searchTerm) {
           let users = await usersCollection.find().toArray();
           users = users?.filter((user) => {
-            console.log(user?.userName);
-            console.log(searchTerm);
-
-            // console.log(user.phone?.toLowerCase().includes(searchTerm.toLowerCase()) > -1)
             return (
               user.userName?.toLowerCase().search(searchTerm.toLowerCase()) >
                 -1 ||
@@ -299,8 +290,6 @@ async function run() {
 
     app.patch("/users/admin/:uid", verifyJWT, async (req, res) => {
       const decodedUID = req.decoded.uid;
-      console.log(decodedUID);
-      console.log(req.query.userId);
       const uid = req.params.uid;
       if (req.query.userId !== decodedUID) {
         return res.status(403).send({ message: "forbidden access" });
@@ -329,7 +318,7 @@ async function run() {
         uid: uid,
       };
       const user = await usersCollection.findOne(query);
-      console.log(user);
+
       res.send({
         isAdmin:
           user?.role === "Admin" ||
@@ -358,8 +347,6 @@ async function run() {
         if (district) query.district = district;
         if (upazila) query.upazila = upazila;
         if (serviceCategory) query.serviceCategory = serviceCategory;
-
-        console.log(division);
 
         const serviceProviders = await providersCollection
           .find(query)
@@ -444,22 +431,21 @@ async function run() {
     app.patch("/booking-status/:bookingId", async (req, res) => {
       const { status } = req.body;
 
-      console.log(status);
       const bookingId = req.params.bookingId;
-      console.log(bookingId);
+
       try {
         const filter = {
           _id: new ObjectId(bookingId),
         };
-        console.log(filter);
+
         const updateDoc = {
           $set: {
             bookingStatus: status,
           },
         };
-        console.log(filter);
+
         const result = await bookingCollection.updateOne(filter, updateDoc);
-        console.log(result);
+
         res.send(result);
       } catch (error) {
         res.status(500).json({ error: "Internal Server Error" });
@@ -579,6 +565,7 @@ async function run() {
             if (matchedService) {
               matchedService.amount = editService.amount;
               matchedService.details = editService.details;
+              matchedService.title = editService.title;
               if (
                 matchedService.selectedFileURL !== editService.selectedFileURL
               ) {
@@ -630,18 +617,18 @@ async function run() {
       }
     });
 
-    app.post("/provider-service/:providerId", async(req, res) => {
+    app.post("/provider-service/:providerId", async (req, res) => {
       const providerId = req.params.providerId;
-      const {serviceName} = req.body;
-      console.log(serviceName)
-
-      const provider = await providersCollection.findOne({uid: providerId});
-      if(provider?.myServices) {
-        const matchedService = provider.myServices.find(service => service.serviceName === serviceName);
+      const { serviceName } = req.body;
+      const provider = await providersCollection.findOne({ uid: providerId });
+      if (provider?.myServices) {
+        const matchedService = provider.myServices.find(
+          (service) => service.serviceName === serviceName
+        );
         return res.send(matchedService);
-      } 
-      res.json.send({});
-    })
+      }
+      res.send({});
+    });
 
     app.get("/jwt", async (req, res) => {
       const uid = req.query.uid;
