@@ -7,12 +7,14 @@
     "start": "node index.js",
     "build": "node index.js",
     "start-dev": "nodemon index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build:css": "postcss public/styles/tailwind.css -o public/styles/styles.css"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "autoprefixer": "^10.4.19",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
@@ -22,8 +24,11 @@
     "mongodb": "^6.3.0",
     "mongoose": "^8.0.3",
     "node-global-storage": "^2.0.0",
+    "nodemailer": "^6.9.13",
+    "postcss": "^8.4.38",
     "socket.io": "^4.7.2",
     "sslcommerz-lts": "^1.1.0",
+    "tailwindcss": "^3.4.3",
     "twilio": "^4.20.0",
     "uuid": "^9.0.1"
   }
