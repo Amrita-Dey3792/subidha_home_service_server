@@ -76,6 +76,15 @@ async function run() {
     .db("SubidhaHomeService")
     .collection("payments");
 
+  const timeSlotCollection = client
+    .db("SubidhaHomeService")
+    .collection("timeSlots");
+
+  const dailyTimeSlots = client
+    .db("SubidhaHomeService")
+    .collection("dailyTimeSlots");
+
+
   try {
     app.get("/allServiceCategories", async (req, res) => {
       try {
@@ -171,7 +180,7 @@ async function run() {
           users = users?.filter((user) => {
             return (
               user.userName?.toLowerCase().search(searchTerm.toLowerCase()) >
-                -1 ||
+              -1 ||
               user.email?.toLowerCase().search(searchTerm.toLowerCase()) > -1 ||
               user.phone?.toLowerCase().search(searchTerm.toLowerCase()) > -1
             );
@@ -384,7 +393,7 @@ async function run() {
         uid: uid,
       };
       const user = await providersCollection.findOne(query);
-      console.log({ isProvider: user?.role === "provider" });
+      // console.log({ isProvider: user?.role === "provider" });
       res.send({ isProvider: user?.role === "provider" });
     });
 
@@ -555,7 +564,7 @@ async function run() {
         };
         const reviews = await reviewsCollection.find(query).toArray();
         res.send(reviews);
-      } catch (error) {}
+      } catch (error) { }
     });
 
     app.post("/edit-provider-service/:providerId", async (req, res) => {
@@ -641,6 +650,26 @@ async function run() {
       res.send({});
     });
 
+
+    app.get("/payments/:id", async (req, res) => {
+      const userId = req.params.id;
+      // console.log(userId);
+      try {
+        const query = {
+          $or: [
+            { userUID: userId, },
+            { serviceManUID: userId }
+          ],
+
+          paidStatus: true,
+        }
+        const payments = await bookingCollection.find(query).toArray();
+        res.send(payments);
+      } catch (error) {
+        res.status(500).json({ error: "Internal server error" });
+      }
+    })
+
     // const tran_id = new ObjectId().toString();
 
     function generateTransactionId() {
@@ -725,11 +754,19 @@ async function run() {
         // console.log("Redirecting to: ", GatewayPageURL);
       });
 
+      function formatDate(date) {
+        const options = { year: 'numeric', month: 'long', day: 'numeric' };
+        return date.toLocaleDateString('en-US', options);
+      }
+
       const payment = {
         bookingId: bookingInfo._id,
         bookingDetails: booking,
         paidStatus: false,
         transationId: tran_id,
+        userID: bookingInfo.userUID,
+        providerID: bookingInfo.serviceManUID,
+        date: formatDate(new Date())
       };
 
       const options = { upsert: true };
@@ -787,6 +824,78 @@ async function run() {
 
       res.send(payment);
     });
+
+
+    app.post('/time-slots', async (req, res) => {
+      const { providerId, slots } = req.body;
+
+      try {
+        let providerSlot = await timeSlotCollection.findOne({ providerId });
+
+        if (providerSlot) {
+          // Update the existing document
+          console.log(providerSlot)
+          providerSlot.slots = { ...providerSlot.slots, ...slots };
+
+          console.log(providerSlot)
+
+          const options = { upsert: true, new: true };
+
+          const result = await timeSlotCollection.findOneAndReplace({ providerId }, providerSlot, options);
+          console.log(result);
+          res.send(result);
+
+        } else {
+          const result = await timeSlotCollection.insertOne({ providerId, slots });
+          res.send(result);
+        }
+      } catch (error) {
+        console.log(error.message);
+        res.status(500).send(error);
+      }
+    });
+
+    app.get("/get-available-slots/", async (req, res) => {
+      const serviceManId = req.query.serviceManId;
+      const selectedDate = req.query.selectedDate;
+      const selectedWeekDay = req.query.selectedWeekDay;
+
+      console.log(serviceManId);
+      console.log(selectedDate);
+      console.log(selectedWeekDay);
+      try {
+
+        const alreadyBooked = await bookingCollection.find({
+          serviceManUID: serviceManId,
+          selectedDate,
+          selectedWeekDay,
+        }).toArray();
+        if (alreadyBooked.length > 0) {
+          // console.log(alreadyBooked)
+          const availableSlots = await timeSlotCollection.findOne({ providerId: serviceManId });
+
+          if (availableSlots?.slots[selectedWeekDay]) {
+            // console.log(availableSlots?.slots[selectedWeekDay]);
+            const bookingSlots = alreadyBooked.map(booking => {
+              return booking.selectedSlot;
+            });
+            const remainingSlots = availableSlots?.slots[selectedWeekDay].filter(slot => !bookingSlots.includes(slot));
+            console.log(remainingSlots);
+            res.send(remainingSlots)
+          }
+          // res.send([]);
+
+        } else {
+          console.log("Hello")
+          const timeSlots = await dailyTimeSlots.find({}).toArray();
+          console.log("Time slots", timeSlots)
+          res.send(timeSlots[0].slots);
+        }
+      } catch (error) {
+        res.status(500).json({ error: "Internal server error" });
+      }
+    })
+
 
     function sendEmail({
       email,
