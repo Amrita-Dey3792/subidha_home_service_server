@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Order Successful - Subidha Home Services</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          sans-serif;
+        background: #f8fafc;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+
+      .container {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        padding: 40px;
+        text-align: center;
+        max-width: 500px;
+        width: 100%;
+        border: 1px solid #e2e8f0;
+      }
+
+      .success-icon {
+        width: 64px;
+        height: 64px;
+        background: #10b981;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 24px;
+      }
+
+      .success-icon svg {
+        width: 32px;
+        height: 32px;
+        color: white;
+      }
+
+      h1 {
+        color: #1f2937;
+        font-size: 24px;
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+
+      .subtitle {
+        color: #6b7280;
+        font-size: 16px;
+        margin-bottom: 32px;
+      }
+
+      .payment-info {
+        background: #f9fafb;
+        border-radius: 8px;
+        padding: 24px;
+        margin-bottom: 32px;
+        text-align: left;
+      }
+
+      .info-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid #e5e7eb;
+      }
+
+      .info-row:last-child {
+        border-bottom: none;
+      }
+
+      .info-label {
+        color: #6b7280;
+        font-size: 14px;
+        font-weight: 500;
+      }
+
+      .info-value {
+        color: #1f2937;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .amount {
+        color: #10b981;
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .actions {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+
+      .btn {
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-weight: 500;
+        text-decoration: none;
+        font-size: 14px;
+        transition: all 0.2s;
+        border: none;
+        cursor: pointer;
+      }
+
+      .btn-primary {
+        background: #3b82f6;
+        color: white;
+      }
+
+      .btn-primary:hover {
+        background: #2563eb;
+      }
+
+      .btn-secondary {
+        background: #f3f4f6;
+        color: #374151;
+        border: 1px solid #d1d5db;
+      }
+
+      .btn-secondary:hover {
+        background: #e5e7eb;
+      }
+
+      .footer {
+        margin-top: 32px;
+        padding-top: 24px;
+        border-top: 1px solid #e5e7eb;
+        color: #6b7280;
+        font-size: 14px;
+      }
+
+      @media (max-width: 600px) {
+        .container {
+          padding: 24px;
+        }
+
+        .actions {
+          flex-direction: column;
+        }
+
+        .btn {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="success-icon">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M5 13l4 4L19 7"
+          ></path>
+        </svg>
+      </div>
+
+      <h1>Order Successful</h1>
+      <p class="subtitle">Your order has been completed successfully</p>
+
+      <div class="payment-info">
+        <div class="info-row">
+          <span class="info-label">Order ID</span>
+          <span class="info-value" id="transactionId">Loading...</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Service</span>
+          <span class="info-value" id="serviceName">Loading...</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Provider</span>
+          <span class="info-value" id="providerName">Loading...</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Total Amount</span>
+          <span class="info-value amount" id="amount">Loading...</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Completion Date</span>
+          <span class="info-value" id="paymentDateTime">Loading...</span>
+        </div>
+      </div>
+
+      <div class="actions">
+        <a
+          href="http://localhost:5173/user-dashboard/orders"
+          class="btn btn-primary"
+        >
+          View My Orders
+        </a>
+        <a
+          href="http://localhost:5173/user-dashboard/payments"
+          class="btn btn-secondary"
+        >
+          Payment History
+        </a>
+        <a href="http://localhost:5173/all-services" class="btn btn-secondary">
+          Book Another Service
+        </a>
+      </div>
+
+      <div class="footer">
+        <p>Need help? Contact our support team</p>
+        <p><strong>Email:</strong> support@subidha.com</p>
+      </div>
+    </div>
+
+    <script>
+      function getUrlParameter(name) {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get(name) || "";
+      }
+
+      function populatePaymentDetails() {
+        const tranId = getUrlParameter("tran_id");
+        const amount = getUrlParameter("total_amount");
+        const currency = getUrlParameter("currency");
+        const serviceName = getUrlParameter("service_name");
+        const providerName = getUrlParameter("provider_name");
+        const cusName = getUrlParameter("cus_name");
+        const storeAmount = getUrlParameter("store_amount");
+
+        // Update Order ID
+        document.getElementById("transactionId").textContent = tranId || "N/A";
+
+        // Update Service Name
+        document.getElementById("serviceName").textContent =
+          serviceName || "Service Completed";
+
+        // Update Provider Name
+        document.getElementById("providerName").textContent =
+          providerName || "Professional Provider";
+
+        // Update Total Amount
+        const displayAmount = amount || storeAmount || "0";
+        document.getElementById("amount").textContent = `${
+          currency || "BDT"
+        } ${displayAmount}`;
+
+        // Update completion date and time
+        const now = new Date();
+        const dateTime = now.toLocaleString("en-US", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        document.getElementById("paymentDateTime").textContent = dateTime;
+      }
+
+      // Initialize page
+      document.addEventListener("DOMContentLoaded", populatePaymentDetails);
+    </script>
+  </body>
+</html>

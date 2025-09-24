@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SSL Commerz Payment Test</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        background: white;
+        padding: 30px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+      }
+      button {
+        background: #007bff;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 5px;
+        cursor: pointer;
+        margin: 10px 5px;
+        font-size: 16px;
+      }
+      button:hover {
+        background: #0056b3;
+      }
+      button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
+      .result {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+        padding: 15px;
+        margin-top: 20px;
+        white-space: pre-wrap;
+        font-family: monospace;
+        font-size: 14px;
+      }
+      .success {
+        border-color: #28a745;
+        background-color: #d4edda;
+      }
+      .error {
+        border-color: #dc3545;
+        background-color: #f8d7da;
+      }
+      .link {
+        display: block;
+        color: #007bff;
+        text-decoration: none;
+        margin: 10px 0;
+        padding: 10px;
+        border: 1px solid #007bff;
+        border-radius: 5px;
+        text-align: center;
+      }
+      .link:hover {
+        background-color: #007bff;
+        color: white;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>SSL Commerz Payment Gateway Test</h1>
+      <p>
+        Test SSL Commerz integration and payment flow directly from backend.
+      </p>
+
+      <button onclick="testSSLCommerz()" id="sslBtn">
+        Test SSL Commerz Connection
+      </button>
+      <button onclick="testPaymentFlow()" id="paymentBtn">
+        Test Payment Flow
+      </button>
+
+      <div id="result"></div>
+    </div>
+
+    <div class="container">
+      <h3>Direct Links:</h3>
+      <a
+        href="http://localhost:5000/api/test-ssl-commerz"
+        target="_blank"
+        class="link"
+      >
+        Backend SSL Commerz Test
+      </a>
+      <a
+        href="http://localhost:5000/api/bookings/BK-TEST-12345/payment"
+        target="_blank"
+        class="link"
+      >
+        Direct Payment API Test
+      </a>
+      <a
+        href="http://localhost:5000/test-payment-success"
+        target="_blank"
+        class="link"
+      >
+        Test Backend Success Page (GET)
+      </a>
+      <button
+        onclick="testPostSuccess()"
+        class="link"
+        style="
+          background: #28a745;
+          color: white;
+          border: none;
+          padding: 10px 20px;
+          border-radius: 5px;
+          cursor: pointer;
+        "
+      >
+        Test Backend Success Page (POST)
+      </button>
+      <a
+        href="http://localhost:5173/ssl-payment/success?tran_id=BK-TEST-12345&total_amount=100&currency=BDT&cus_name=Test%20User&cus_email=test@example.com&val_id=TEST123456&card_type=VISA"
+        target="_blank"
+        class="link"
+      >
+        SSL Payment Success Page (Frontend)
+      </a>
+      <a
+        href="http://localhost:5173/ssl-payment/failed?tran_id=BK-TEST-12345&total_amount=100&currency=BDT&error=Insufficient%20Funds"
+        target="_blank"
+        class="link"
+      >
+        SSL Payment Failed Page (Frontend)
+      </a>
+      <a
+        href="http://localhost:5173/ssl-payment/cancelled?tran_id=BK-TEST-12345&total_amount=100&currency=BDT"
+        target="_blank"
+        class="link"
+      >
+        SSL Payment Cancelled Page (Frontend)
+      </a>
+    </div>
+
+    <div class="container">
+      <h3>Instructions:</h3>
+      <ol>
+        <li>Make sure backend server is running: <code>node index.js</code></li>
+        <li>Click "Test SSL Commerz Connection" first</li>
+        <li>If successful, click "Test Payment Flow"</li>
+        <li>Check the result below</li>
+      </ol>
+    </div>
+
+    <script>
+      // Test POST payment success
+      async function testPostSuccess() {
+        const testData = {
+          tran_id: "TEST-POST-12345",
+          total_amount: "750",
+          currency: "BDT",
+          cus_name: "Test Customer POST",
+          cus_email: "testpost@example.com",
+          val_id: "TEST-POST-VAL-123",
+          card_type: "VISA",
+          status: "SUCCESS",
+          bank_tran_id: "BANK-TEST-123",
+        };
+
+        try {
+          const formData = new FormData();
+          Object.keys(testData).forEach((key) => {
+            formData.append(key, testData[key]);
+          });
+
+          const response = await fetch(
+            "http://localhost:5000/payment-success.html",
+            {
+              method: "POST",
+              body: formData,
+            }
+          );
+
+          if (response.ok) {
+            const html = await response.text();
+            const newWindow = window.open("", "_blank");
+            newWindow.document.write(html);
+            newWindow.document.close();
+          } else {
+            alert("POST request failed: " + response.status);
+          }
+        } catch (error) {
+          alert("Error testing POST: " + error.message);
+        }
+      }
+
+      async function testSSLCommerz() {
+        const btn = document.getElementById("sslBtn");
+        const result = document.getElementById("result");
+
+        btn.disabled = true;
+        btn.textContent = "Testing...";
+        result.innerHTML = "";
+
+        try {
+          const response = await fetch(
+            "http://localhost:5000/api/test-ssl-commerz"
+          );
+          const data = await response.json();
+
+          result.className = "result " + (data.success ? "success" : "error");
+          result.textContent = JSON.stringify(data, null, 2);
+        } catch (error) {
+          result.className = "result error";
+          result.textContent = "Error: " + error.message;
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Test SSL Commerz Connection";
+        }
+      }
+
+      async function testPaymentFlow() {
+        const btn = document.getElementById("paymentBtn");
+        const result = document.getElementById("result");
+
+        btn.disabled = true;
+        btn.textContent = "Testing...";
+        result.innerHTML = "";
+
+        try {
+          const response = await fetch(
+            "http://localhost:5000/api/bookings/BK-TEST-12345/payment",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                paymentMethod: "online",
+              }),
+            }
+          );
+
+          const data = await response.json();
+
+          result.className = "result " + (data.success ? "success" : "error");
+          result.textContent = JSON.stringify(data, null, 2);
+
+          // If payment URL is returned, show it
+          if (data.success && data.paymentUrl) {
+            result.innerHTML +=
+              '\n\n<a href="' +
+              data.paymentUrl +
+              '" target="_blank" style="color: blue; text-decoration: underline; display: block; margin: 10px 0; padding: 10px; border: 1px solid blue; border-radius: 5px;">🔗 Click here to go to SSL Commerz Payment Page</a>';
+
+            if (data.redirectUrls) {
+              result.innerHTML +=
+                '\n\n<h4 style="margin: 20px 0 10px 0; color: #333;">After Payment, you will be redirected to:</h4>';
+              result.innerHTML +=
+                '<a href="' +
+                data.redirectUrls.success +
+                '" target="_blank" style="color: green; text-decoration: underline; display: block; margin: 5px 0;">✅ Success Page: ' +
+                data.redirectUrls.success +
+                "</a>";
+              result.innerHTML +=
+                '<a href="' +
+                data.redirectUrls.fail +
+                '" target="_blank" style="color: red; text-decoration: underline; display: block; margin: 5px 0;">❌ Fail Page: ' +
+                data.redirectUrls.fail +
+                "</a>";
+              result.innerHTML +=
+                '<a href="' +
+                data.redirectUrls.cancel +
+                '" target="_blank" style="color: orange; text-decoration: underline; display: block; margin: 5px 0;">⚠️ Cancel Page: ' +
+                data.redirectUrls.cancel +
+                "</a>";
+            }
+          }
+        } catch (error) {
+          result.className = "result error";
+          result.textContent = "Error: " + error.message;
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Test Payment Flow";
+        }
+      }
+    </script>
+  </body>
+</html>
