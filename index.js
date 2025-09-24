@@ -220,19 +220,23 @@ const verifyAdmin = async (req, res, next) => {
 };
 
 async function run() {
-  const dailyTimeSlots = client
-    .db("SubidhaHomeService")
-    .collection("dailyTimeSlots");
-
-  const rolesCollection = client.db("SubidhaHomeService").collection("roles");
-  const categoriesCollection = client
-    .db("SubidhaHomeService")
-    .collection("categories");
-  const providersCollection = client
-    .db("SubidhaHomeService")
-    .collection("providers");
-
   try {
+    // Connect to MongoDB
+    await client.connect();
+    console.log("✅ Connected to MongoDB successfully");
+
+    const dailyTimeSlots = client
+      .db("SubidhaHomeService")
+      .collection("dailyTimeSlots");
+
+    const rolesCollection = client.db("SubidhaHomeService").collection("roles");
+    const categoriesCollection = client
+      .db("SubidhaHomeService")
+      .collection("categories");
+    const providersCollection = client
+      .db("SubidhaHomeService")
+      .collection("providers");
+
     // Function to fetch service categories from database and format response
     const fetchServiceCategories = async (query = {}) => {
       try {
@@ -2498,6 +2502,9 @@ async function run() {
         });
       }
     });
+  } catch (error) {
+    console.error("❌ MongoDB connection error:", error);
+    process.exit(1);
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
@@ -7574,6 +7581,286 @@ app.get("/api/provider/broadcasts", async (req, res) => {
   }
 });
 
+// ==================== PROVIDER PROFILE MANAGEMENT ====================
+
+// Middleware to verify provider authentication
+const verifyProvider = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        success: false,
+        error: "No token provided",
+      });
+    }
+
+    const idToken = authHeader.split(" ")[1];
+
+    // Verify Firebase ID token
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+
+    // Find provider by email (since that's how they're stored)
+    const provider = await providersCollection.findOne({
+      email: decodedToken.email,
+    });
+
+    if (!provider) {
+      return res.status(403).json({
+        success: false,
+        error: "Provider access required",
+      });
+    }
+
+    req.provider = provider;
+    req.providerId = provider._id;
+    req.providerEmail = provider.email;
+    next();
+  } catch (error) {
+    console.error("Provider verification error:", error);
+    res.status(401).json({
+      success: false,
+      error: "Invalid token",
+    });
+  }
+};
+
+// Get provider profile
+app.get("/api/provider/profile", verifyProvider, async (req, res) => {
+  try {
+    const provider = req.provider;
+
+    // Get service names from categories
+    let serviceNames = [];
+    if (provider.serviceCategories && provider.serviceCategories.length > 0) {
+      // Filter out non-ObjectId strings and convert valid ObjectIds
+      const validObjectIds = provider.serviceCategories
+        .filter((id) => {
+          try {
+            new ObjectId(id);
+            return true;
+          } catch (error) {
+            return false;
+          }
+        })
+        .map((id) => new ObjectId(id));
+
+      if (validObjectIds.length > 0) {
+        const categories = await categoriesCollection
+          .find({
+            _id: { $in: validObjectIds },
+          })
+          .toArray();
+        serviceNames = categories.map((cat) => cat.name);
+      }
+
+      // If no valid ObjectIds found, use the serviceCategories as service names directly
+      if (serviceNames.length === 0 && provider.serviceCategories.length > 0) {
+        serviceNames = provider.serviceCategories;
+      }
+    }
+
+    // Calculate booking statistics
+    const totalBookings = await bookingCollection.countDocuments({
+      providerId: provider._id.toString(),
+    });
+
+    const completedBookings = await bookingCollection.countDocuments({
+      providerId: provider._id.toString(),
+      status: "completed",
+    });
+
+    // Calculate earnings (assuming each completed booking has a price)
+    const completedBookingDocs = await bookingCollection
+      .find({
+        providerId: provider._id.toString(),
+        status: "completed",
+      })
+      .toArray();
+
+    const earnings = completedBookingDocs.reduce((total, booking) => {
+      return total + (booking.price || 0);
+    }, 0);
+
+    // Calculate rating from reviews
+    const reviews = await bookingCollection
+      .find({
+        providerId: provider._id.toString(),
+        review: { $exists: true, $ne: null },
+      })
+      .toArray();
+
+    const rating =
+      reviews.length > 0
+        ? reviews.reduce((sum, review) => sum + (review.rating || 0), 0) /
+          reviews.length
+        : 0;
+
+    const profileData = {
+      businessName:
+        provider.businessName ||
+        provider.companyName ||
+        provider.fullName ||
+        "",
+      email: provider.email || "",
+      phone: provider.phone || "",
+      businessAddress:
+        provider.address?.fullAddress || provider.address?.address || "",
+      bio: provider.bio || provider.description || "",
+      services: provider.serviceCategories || [],
+      serviceNames: serviceNames,
+      rating: Math.round(rating * 10) / 10, // Round to 1 decimal place
+      totalBookings: totalBookings,
+      completedBookings: completedBookings,
+      earnings: earnings,
+      experience: provider.experience || 0,
+      skills: provider.skills || [],
+      workingHours: provider.workingHours || "",
+      workingDays: provider.workingDays || [],
+      emergencyService: provider.emergencyService || false,
+      status: provider.status || "pending",
+      createdAt: provider.createdAt,
+      updatedAt: provider.updatedAt,
+    };
+
+    res.json({
+      success: true,
+      data: profileData,
+    });
+  } catch (error) {
+    console.error("Error fetching provider profile:", error);
+    res.status(500).json({
+      success: false,
+      error: "Internal Server Error",
+      message: "Failed to fetch provider profile",
+    });
+  }
+});
+
+// Update provider profile
+app.put("/api/provider/profile", verifyProvider, async (req, res) => {
+  try {
+    const providerId = req.providerId;
+    const updateData = req.body;
+
+    // Remove fields that shouldn't be updated directly
+    const allowedFields = [
+      "businessName",
+      "phone",
+      "businessAddress",
+      "bio",
+      "experience",
+      "skills",
+      "workingHours",
+      "workingDays",
+      "emergencyService",
+    ];
+
+    const filteredData = {};
+    allowedFields.forEach((field) => {
+      if (updateData[field] !== undefined) {
+        filteredData[field] = updateData[field];
+      }
+    });
+
+    // Update address if businessAddress is provided
+    if (updateData.businessAddress) {
+      filteredData["address.fullAddress"] = updateData.businessAddress;
+    }
+
+    filteredData.updatedAt = new Date();
+
+    const result = await providersCollection.updateOne(
+      { _id: providerId },
+      { $set: filteredData }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Provider not found",
+      });
+    }
+
+    // Fetch updated provider data
+    const updatedProvider = await providersCollection.findOne({
+      _id: providerId,
+    });
+
+    // Get service names
+    let serviceNames = [];
+    if (
+      updatedProvider.serviceCategories &&
+      updatedProvider.serviceCategories.length > 0
+    ) {
+      // Filter out non-ObjectId strings and convert valid ObjectIds
+      const validObjectIds = updatedProvider.serviceCategories
+        .filter((id) => {
+          try {
+            new ObjectId(id);
+            return true;
+          } catch (error) {
+            return false;
+          }
+        })
+        .map((id) => new ObjectId(id));
+
+      if (validObjectIds.length > 0) {
+        const categories = await categoriesCollection
+          .find({
+            _id: { $in: validObjectIds },
+          })
+          .toArray();
+        serviceNames = categories.map((cat) => cat.name);
+      }
+
+      // If no valid ObjectIds found, use the serviceCategories as service names directly
+      if (
+        serviceNames.length === 0 &&
+        updatedProvider.serviceCategories.length > 0
+      ) {
+        serviceNames = updatedProvider.serviceCategories;
+      }
+    }
+
+    const profileData = {
+      businessName:
+        updatedProvider.businessName ||
+        updatedProvider.companyName ||
+        updatedProvider.fullName ||
+        "",
+      email: updatedProvider.email || "",
+      phone: updatedProvider.phone || "",
+      businessAddress:
+        updatedProvider.address?.fullAddress ||
+        updatedProvider.address?.address ||
+        "",
+      bio: updatedProvider.bio || updatedProvider.description || "",
+      services: updatedProvider.serviceCategories || [],
+      serviceNames: serviceNames,
+      experience: updatedProvider.experience || 0,
+      skills: updatedProvider.skills || [],
+      workingHours: updatedProvider.workingHours || "",
+      workingDays: updatedProvider.workingDays || [],
+      emergencyService: updatedProvider.emergencyService || false,
+      status: updatedProvider.status || "pending",
+      updatedAt: updatedProvider.updatedAt,
+    };
+
+    res.json({
+      success: true,
+      data: profileData,
+      message: "Profile updated successfully",
+    });
+  } catch (error) {
+    console.error("Error updating provider profile:", error);
+    res.status(500).json({
+      success: false,
+      error: "Internal Server Error",
+      message: "Failed to update provider profile",
+    });
+  }
+});
+
 // ==================== ADMIN BOOKINGS & ORDERS MANAGEMENT ====================
 
 // Get booking statistics for admin
@@ -7784,6 +8071,215 @@ app.get("/api/admin/bookings", verifyAdmin, async (req, res) => {
       success: false,
       error: "Internal server error",
       message: "Unable to fetch bookings",
+    });
+  }
+});
+
+// Get all users for admin management
+app.get("/api/admin/users", verifyAdmin, async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      role,
+      search,
+      sortBy = "signupDate",
+      sortOrder = "desc",
+      status,
+    } = req.query;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const query = {};
+
+    // Build query filters
+    if (role && role !== "all") {
+      query.role = role;
+    }
+
+    if (status && status !== "all") {
+      query.status = status;
+    }
+
+    // Search functionality
+    if (search) {
+      query.$or = [
+        { userName: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { displayName: { $regex: search, $options: "i" } },
+        { uid: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    // Build sort object
+    const sort = {};
+    sort[sortBy] = sortOrder === "desc" ? -1 : 1;
+
+    // Get users with pagination
+    const [users, totalCount] = await Promise.all([
+      usersCollection
+        .find(query)
+        .sort(sort)
+        .skip(skip)
+        .limit(parseInt(limit))
+        .toArray(),
+      usersCollection.countDocuments(query),
+    ]);
+
+    // Get user statistics
+    const stats = await Promise.all([
+      usersCollection.countDocuments({ role: "user" }),
+      usersCollection.countDocuments({ role: "provider" }),
+      usersCollection.countDocuments({ role: "admin" }),
+      usersCollection.countDocuments({ status: "Active" }),
+      usersCollection.countDocuments({ status: "Inactive" }),
+    ]);
+
+    const userStats = {
+      totalUsers: totalCount,
+      regularUsers: stats[0],
+      providers: stats[1],
+      admins: stats[2],
+      activeUsers: stats[3],
+      inactiveUsers: stats[4],
+    };
+
+    res.json({
+      success: true,
+      data: {
+        users: users.map((user) => ({
+          uid: user.uid,
+          userName: user.userName || user.displayName,
+          email: user.email,
+          phone: user.phone,
+          photoURL: user.photoURL,
+          role: user.role,
+          status: user.status,
+          signupDate: user.signupDate,
+          lastLogin: user.lastLogin,
+          serviceCategories: user.serviceCategories || [],
+          services: user.services || [],
+        })),
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(totalCount / parseInt(limit)),
+          totalCount,
+          limit: parseInt(limit),
+        },
+        stats: userStats,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching admin users:", error);
+    res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      message: "Unable to fetch users",
+    });
+  }
+});
+
+// Update user role for admin
+app.patch("/api/admin/users/:uid/role", verifyAdmin, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const { role } = req.body;
+
+    if (!role) {
+      return res.status(400).json({
+        success: false,
+        error: "Role is required",
+      });
+    }
+
+    const validRoles = ["user", "provider", "admin"];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid role. Must be one of: user, provider, admin",
+      });
+    }
+
+    const result = await usersCollection.updateOne(
+      { uid },
+      {
+        $set: {
+          role,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "User role updated successfully",
+      data: { uid, role },
+    });
+  } catch (error) {
+    console.error("Error updating user role:", error);
+    res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      message: "Unable to update user role",
+    });
+  }
+});
+
+// Update user status for admin
+app.patch("/api/admin/users/:uid/status", verifyAdmin, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        error: "Status is required",
+      });
+    }
+
+    const validStatuses = ["Active", "Inactive", "Suspended"];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid status. Must be one of: Active, Inactive, Suspended",
+      });
+    }
+
+    const result = await usersCollection.updateOne(
+      { uid },
+      {
+        $set: {
+          status,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "User status updated successfully",
+      data: { uid, status },
+    });
+  } catch (error) {
+    console.error("Error updating user status:", error);
+    res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      message: "Unable to update user status",
     });
   }
 });
