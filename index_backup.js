@@ -5247,7 +5247,7 @@ const sslCommerzConfig = {
     process.env.SSL_SUCCESS_URL ||
     (isProduction
       ? "https://yourdomain.com/payment-success.html"
-      : "https://subidha-home-service-server-ambj6cxao-amrita965s-projects.vercel.app/payment-success.html"),
+      : "https://subidha-home-service-server.vercel.app/payment-success.html"),
   fail_url:
     process.env.SSL_FAIL_URL ||
     (isProduction
@@ -5262,7 +5262,7 @@ const sslCommerzConfig = {
     process.env.SSL_IPN_URL ||
     (isProduction
       ? "https://yourdomain.com/api/bookings/ssl-ipn"
-      : "https://subidha-home-service-server-ambj6cxao-amrita965s-projects.vercel.app/api/bookings/ssl-ipn"),
+      : "https://subidha-home-service-server.vercel.app/api/bookings/ssl-ipn"),
 };
 
 // Create SSL Commerz instance
