@@ -57,7 +57,6 @@ const server = http.createServer(app);
 
 console.log(server);
 
-
 // middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true })); // For form data parsing
@@ -2411,8 +2410,6 @@ async function run() {
         res.status(500).json({ error: "Internal server error" });
       }
     });
-
-
 
     app.get("/messages/:uid", async (req, res) => {
       try {
@@ -5250,7 +5247,7 @@ const sslCommerzConfig = {
     process.env.SSL_SUCCESS_URL ||
     (isProduction
       ? "https://yourdomain.com/payment-success.html"
-      : "http://localhost:5000/payment-success.html"),
+      : "https://subidha-home-service-server-ambj6cxao-amrita965s-projects.vercel.app/payment-success.html"),
   fail_url:
     process.env.SSL_FAIL_URL ||
     (isProduction
@@ -5265,7 +5262,7 @@ const sslCommerzConfig = {
     process.env.SSL_IPN_URL ||
     (isProduction
       ? "https://yourdomain.com/api/bookings/ssl-ipn"
-      : "http://localhost:5000/api/bookings/ssl-ipn"),
+      : "https://subidha-home-service-server-ambj6cxao-amrita965s-projects.vercel.app/api/bookings/ssl-ipn"),
 };
 
 // Create SSL Commerz instance

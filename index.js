@@ -59,15 +59,47 @@ const server = http.createServer(app);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true })); // For form data parsing
 app.use(express.static("public"));
+
+// CORS is handled by the cors package below
 app.use(
   cors({
-    origin: [
-      "http://localhost:5173",
-      "https://subidha-home-services.vercel.app",
-    ],
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+
+      const allowedOrigins = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:4173",
+        "https://subidha-home-services.vercel.app",
+        "https://subidha-home-services.netlify.app",
+        "https://subidha-home-service-server-ambj6cxao-amrita965s-projects.vercel.app",
+      ];
+
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        // For development, allow localhost with any port
+        if (origin.startsWith("http://localhost:")) {
+          callback(null, true);
+        } else {
+          callback(new Error("Not allowed by CORS"));
+        }
+      }
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     credentials: true,
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "Accept",
+      "Origin",
+      "Access-Control-Request-Method",
+      "Access-Control-Request-Headers",
+    ],
+    exposedHeaders: ["Content-Range", "X-Content-Range"],
+    optionsSuccessStatus: 200,
   })
 );
 
@@ -5095,7 +5127,7 @@ const sslCommerzConfig = {
     process.env.SSL_SUCCESS_URL ||
     (isProduction
       ? "https://yourdomain.com/payment-success.html"
-      : "http://localhost:5000/payment-success.html"),
+      : "https://subidha-home-service-server-ambj6cxao-amrita965s-projects.vercel.app/payment-success.html"),
   fail_url:
     process.env.SSL_FAIL_URL ||
     (isProduction
@@ -5110,7 +5142,7 @@ const sslCommerzConfig = {
     process.env.SSL_IPN_URL ||
     (isProduction
       ? "https://yourdomain.com/api/bookings/ssl-ipn"
-      : "http://localhost:5000/api/bookings/ssl-ipn"),
+      : "https://subidha-home-service-server-ambj6cxao-amrita965s-projects.vercel.app/api/bookings/ssl-ipn"),
 };
 
 // Create SSL Commerz instance
@@ -9790,6 +9822,62 @@ app.post(
     }
   }
 );
+
+// Check if user is a provider
+app.get("/api/check-provider/:email", async (req, res) => {
+  try {
+    const { email } = req.params;
+
+    // Check in providers collection
+    const provider = await providersCollection.findOne({ email: email });
+
+    if (provider) {
+      res.json({
+        isProvider: true,
+        status: provider.status,
+        isVerified: provider.isVerified || false,
+        isActive: provider.isActive || false,
+      });
+    } else {
+      res.json({
+        isProvider: false,
+        status: null,
+        isVerified: false,
+        isActive: false,
+      });
+    }
+  } catch (error) {
+    console.error("Error checking provider status:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// Check if user is an admin
+app.get("/api/check-admin/:email", async (req, res) => {
+  try {
+    const { email } = req.params;
+
+    // Check in users collection for admin role
+    const user = await usersCollection.findOne({ email: email });
+
+    if (user && user.role === "admin") {
+      res.json({
+        isAdmin: true,
+        role: user.role,
+        status: user.status || "active",
+      });
+    } else {
+      res.json({
+        isAdmin: false,
+        role: user ? user.role : null,
+        status: user ? user.status : null,
+      });
+    }
+  } catch (error) {
+    console.error("Error checking admin status:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
 
 server.listen(port, () => {
   console.log(`Home Services Server app Listening on Port: ${port}`);
