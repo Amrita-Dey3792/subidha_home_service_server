@@ -2514,6 +2514,24 @@ async function run() {
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
 
+    // Test endpoint to check basic functionality
+    app.get("/test", (req, res) => {
+      res.json({ 
+        message: "Server is working", 
+        timestamp: new Date().toISOString(),
+        mongodb_connected: client.topology ? client.topology.isConnected() : false
+      });
+    });
+
+    // Simple test endpoint for user creation (without database)
+    app.post("/test-user", (req, res) => {
+      res.json({ 
+        message: "User endpoint is working", 
+        received_data: req.body,
+        timestamp: new Date().toISOString()
+      });
+    });
+
     // Get service provider statistics (Admin only)
     app.get("/api/service-providers/stats", async (req, res) => {
       try {
